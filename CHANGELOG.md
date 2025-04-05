@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 此文件记录项目的所有重要更改。
 
+## [1.0.3] - 2024-04-06
+
+### Added / 新增
+- Batch conversion functionality to process multiple files in directories / 批量转换功能，可处理目录中的多个文件
+- Shortened command aliases for better usability (e.g., 'c' for 'convert', 'b' for 'batch') / 更短的命令别名以提高可用性（如'c'代表'convert'，'b'代表'batch'）
+- Support for merging multiple structures into one multi-frame file / 支持将多个结构合并为一个多帧文件
+- Shorthand parameters for commonly used options (e.g., '-s' for '--sort', '-e' for '--element-order') / 常用选项的简写参数（如'-s'代表'--sort'，'-e'代表'--element-order'）
+
+### Improved / 改进
+- Command-line interface with shorter aliases and better help documentation / 命令行界面使用更短的别名和更好的帮助文档
+- Error handling and debugging for batch operations / 批处理操作的错误处理和调试
+- Progress reporting for batch conversion operations / 批量转换操作的进度报告
+- File pattern matching for finding structure files in directories / 用于在目录中查找结构文件的文件模式匹配
+
+### Fixed / 修复
+- Sort order parameter handling for custom element ordering / 自定义元素排序的排序参数处理
+- Directory structure preservation when batch converting files / 批量转换文件时保留目录结构
+- Command-line parameter parsing for abbreviated options / 缩写选项的命令行参数解析
+
 ## [1.0.2] - 2024-04-05
 
 ### Changed / 变更

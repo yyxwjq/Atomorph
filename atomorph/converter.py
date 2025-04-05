@@ -585,4 +585,189 @@ class StructureConverter:
                         f.write(f'{pos[0]:20.16f} {pos[1]:20.16f} {pos[2]:20.16f}\n')
         
         print(f"VASP file written to: {output_path}")
-        print(f"Total atoms: {total_atoms}, Fixed atoms: {fixed_count}") 
+        print(f"Total atoms: {total_atoms}, Fixed atoms: {fixed_count}")
+
+    def batch_convert(
+        self,
+        input_dir: Union[str, Path],
+        output_dir: Union[str, Path],
+        pattern: str = "POSCAR",
+        recursive: bool = True,
+        output_format: str = "vasp",
+        merge_output: bool = False,
+        output_merged_file: Optional[Union[str, Path]] = None,
+        **convert_kwargs
+    ) -> Dict[str, Any]:
+        """
+        Batch convert all files matching pattern in a directory and its subdirectories.
+        
+        This function traverses the given directory, finds all files matching the specified
+        pattern, and converts them to the target format. It can operate recursively through
+        subdirectories and optionally merge all structures into a single multi-frame file.
+        
+        Args:
+            input_dir: Input directory path
+            output_dir: Output directory path
+            pattern: File pattern to match (default: "POSCAR"). Can be a specific filename
+                     or a pattern with wildcard (e.g., "*.vasp")
+            recursive: Whether to search recursively through subdirectories (default: True)
+            output_format: Output file format (default: "vasp")
+            merge_output: Whether to merge all structures into a single multi-frame file (default: False)
+            output_merged_file: Output path for merged file (used only if merge_output is True)
+            **convert_kwargs: Additional conversion parameters to pass to convert() method,
+                              such as element_mapping, constraints, sort_type, etc.
+            
+        Returns:
+            Dictionary with statistics about the conversion process, including:
+            - total_files: Total number of files processed
+            - successful: Number of files successfully converted
+            - failed: Number of files that failed to convert
+            - failed_files: List of failed files with error messages
+            - merged_file: Path to the merged output file (if merge_output=True)
+            - merged_count: Number of structures in the merged file
+            
+        Example:
+            >>> converter = StructureConverter()
+            >>> # Convert all POSCAR files to XYZ
+            >>> stats = converter.batch_convert(
+            ...     input_dir="./calculations",
+            ...     output_dir="./converted",
+            ...     pattern="POSCAR",
+            ...     output_format="xyz"
+            ... )
+            >>> print(f"Converted {stats['successful']} files")
+            >>> 
+            >>> # Merge all VASP files into one XYZ file
+            >>> stats = converter.batch_convert(
+            ...     input_dir="./calculations",
+            ...     output_dir="./merged",
+            ...     pattern="*.vasp",
+            ...     output_format="xyz",
+            ...     merge_output=True
+            ... )
+            >>> print(f"Merged {stats['merged_count']} structures")
+        """
+        input_dir = Path(input_dir)
+        output_dir = Path(output_dir)
+        
+        if not input_dir.exists() or not input_dir.is_dir():
+            raise ValueError(f"Input directory '{input_dir}' does not exist or is not a directory")
+        
+        # Create output directory if it doesn't exist
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Find all matching files
+        matching_files = []
+        
+        if recursive:
+            for root, _, files in os.walk(input_dir):
+                for file in files:
+                    if file == pattern or (pattern.startswith('*.') and file.endswith(pattern[1:])):
+                        file_path = Path(root) / file
+                        matching_files.append(file_path)
+        else:
+            for file in input_dir.iterdir():
+                if file.is_file() and (file.name == pattern or 
+                                    (pattern.startswith('*.') and file.name.endswith(pattern[1:]))):
+                    matching_files.append(file)
+        
+        print(f"Found {len(matching_files)} files matching pattern '{pattern}'")
+        
+        if not matching_files:
+            return {"status": "warning", "message": f"No files matching pattern '{pattern}' found"}
+        
+        # Statistics
+        stats = {
+            "total_files": len(matching_files),
+            "successful": 0,
+            "failed": 0,
+            "skipped": 0,
+            "failed_files": []
+        }
+        
+        # Structures for merging
+        all_structures = []
+        
+        # Process each file
+        progress_bar = tqdm(matching_files, desc="Converting files", unit="file")
+        for input_file in progress_bar:
+            try:
+                # Determine output path
+                rel_path = input_file.relative_to(input_dir)
+                parent_dirs = str(rel_path.parent)
+                
+                if merge_output:
+                    # Read structures and add to merge list
+                    try:
+                        structures = self._read_structures(input_file, None)
+                        
+                        # Add source file info to each structure
+                        for structure in structures:
+                            structure.info['source_file'] = str(rel_path)
+                        
+                        all_structures.extend(structures)
+                        stats["successful"] += 1
+                    except Exception as e:
+                        print(f"Error reading {input_file}: {str(e)}")
+                        stats["failed"] += 1
+                        stats["failed_files"].append({"file": str(input_file), "error": str(e)})
+                else:
+                    # Create output subdirectory
+                    if parent_dirs and parent_dirs != '.':
+                        output_subdir = output_dir / parent_dirs
+                        output_subdir.mkdir(parents=True, exist_ok=True)
+                        output_file = output_subdir / f"{input_file.stem}.{output_format}"
+                    else:
+                        output_file = output_dir / f"{input_file.stem}.{output_format}"
+                    
+                    # Convert file
+                    try:
+                        self.convert(
+                            input_path=input_file,
+                            output_path=output_file,
+                            output_format=output_format,
+                            **convert_kwargs
+                        )
+                        stats["successful"] += 1
+                    except Exception as e:
+                        print(f"Error converting {input_file}: {str(e)}")
+                        stats["failed"] += 1
+                        stats["failed_files"].append({"file": str(input_file), "error": str(e)})
+            
+            except Exception as e:
+                print(f"Error processing {input_file}: {str(e)}")
+                stats["failed"] += 1
+                stats["failed_files"].append({"file": str(input_file), "error": str(e)})
+        
+        # If merging, write all structures to a single file
+        if merge_output and all_structures:
+            if not output_merged_file:
+                output_merged_file = output_dir / f"merged.{output_format}"
+            else:
+                output_merged_file = Path(output_merged_file)
+            
+            try:
+                print(f"Writing {len(all_structures)} structures to {output_merged_file}")
+                
+                # Check if directory exists
+                output_merged_file.parent.mkdir(parents=True, exist_ok=True)
+                
+                # Write using ASE
+                ase.io.write(str(output_merged_file), all_structures, format=output_format)
+                
+                stats["merged_file"] = str(output_merged_file)
+                stats["merged_count"] = len(all_structures)
+            except Exception as e:
+                print(f"Error writing merged file: {str(e)}")
+                stats["merge_error"] = str(e)
+        
+        # Print summary
+        print(f"\nConversion summary:")
+        print(f"  Total files:   {stats['total_files']}")
+        print(f"  Successful:    {stats['successful']}")
+        print(f"  Failed:        {stats['failed']}")
+        
+        if merge_output and "merged_file" in stats:
+            print(f"  Merged to:     {stats['merged_file']} ({stats['merged_count']} structures)")
+        
+        return stats

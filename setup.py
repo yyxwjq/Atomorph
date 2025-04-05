@@ -9,15 +9,17 @@ from setuptools import setup, find_packages
 import os
 import re
 
-# Get version number
-def get_version():
-    init_py = open('atomorph/__init__.py').read()
-    return re.search(r"__version__ = ['\"]([^'\"]+)['\"]", init_py).group(1)
+# Read the version from __init__.py
+with open(os.path.join('atomorph', '__init__.py'), 'r') as f:
+    version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]", f.read(), re.M)
+    if version_match:
+        version = version_match.group(1)
+    else:
+        raise RuntimeError("Unable to find version string in atomorph/__init__.py")
 
-# Read long description
-def get_long_description():
-    with open('README.md', encoding='utf-8') as f:
-        return f.read()
+# Read README.md for long_description
+with open('README.md', 'r') as f:
+    long_description = f.read()
 
 # Installation requirements
 install_requires = [
@@ -29,52 +31,55 @@ install_requires = [
 # Development requirements
 dev_requires = [
     'pytest>=6.0.0',
-    'pytest-cov>=2.12.0',
+    'pytest-cov>=2.10.0',
     'black>=21.5b2',
-    'isort>=5.9.0',
     'flake8>=3.9.0',
     'mypy>=0.812',
     'sphinx>=4.0.0',
-    'sphinx-rtd-theme>=0.5.2',
-    'twine>=3.4.0',
-    'build>=0.7.0',
+    'sphinx-rtd-theme>=0.5.0',
 ]
 
 setup(
     name="atomorph",
-    version=get_version(),
+    version=version,
     description="A tool for converting atomic structure files",
-    long_description=get_long_description(),
+    long_description=long_description,
     long_description_content_type="text/markdown",
-    author="Atomorph Team",
-    author_email="atomorph@example.com",
-    url="https://github.com/atomorph-team/atomorph",
+    author="The Atomorph Team",
+    author_email="contact@atomorph.org",
+    url="https://github.com/atomorph/atomorph",
     packages=find_packages(),
     install_requires=install_requires,
     extras_require={
         "dev": dev_requires,
     },
     classifiers=[
-        "Development Status :: 5 - Production/Stable",
+        "Development Status :: 4 - Beta",
         "Intended Audience :: Science/Research",
         "License :: OSI Approved :: MIT License",
+        "Natural Language :: English",
+        "Natural Language :: Chinese (Simplified)",
+        "Operating System :: OS Independent",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
         "Topic :: Scientific/Engineering :: Chemistry",
         "Topic :: Scientific/Engineering :: Physics",
     ],
-    python_requires=">=3.7",
+    python_requires=">=3.8",
     entry_points={
         "console_scripts": [
             "atomorph=atomorph.cli:main",
         ],
     },
+    keywords='atomic structure converter VASP XYZ ASE',
     project_urls={
-        "Bug Reports": "https://github.com/atomorph-team/atomorph/issues",
-        "Source": "https://github.com/atomorph-team/atomorph",
-        "Documentation": "https://github.com/atomorph-team/atomorph",
+        "Documentation": "https://atomorph.readthedocs.io/",
+        "Source": "https://github.com/atomorph/atomorph",
+        "Bug Reports": "https://github.com/atomorph/atomorph/issues",
     },
+    include_package_data=True,
+    license='MIT',
 ) 
