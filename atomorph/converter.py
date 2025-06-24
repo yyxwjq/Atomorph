@@ -4,21 +4,21 @@
 """
 Core conversion functionality for atomic structure files.
 """
-
-import os
-import warnings
-from pathlib import Path
-from typing import Dict, List, Optional, Union, Any
-import ase.io
-from ase import Atoms
-import sys
-from ase.io import read, write
-from ase.constraints import FixAtoms
-import numpy as np
-from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Dict, List, Optional, Union, Any
+from ase.constraints import FixAtoms
+from ase.io.lammpsdata import read_lammps_data, write_lammps_data
+from ase.io.lammpsrun import read_lammps_dump_text
+from ase.io import read, write
 from functools import partial
+from pathlib import Path
 import multiprocessing
+from tqdm import tqdm
+from ase import Atoms
+import numpy as np
+import warnings
+import sys
+import os
 
 # Filter out ASE spacegroup warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="ase.spacegroup.spacegroup")
@@ -142,11 +142,19 @@ class StructureConverter:
             
             # Auto-detect file format
             if input_format is None:
-                input_format = input_path.suffix[1:] if input_path.suffix else "vasp"
+                if input_path.suffix:
+                    input_format = input_path.suffix[1:]
+                else:
+                    raise ValueError("Input file format not specified and cannot be auto-detected. Please provide input_format.")
+                
             if output_format is None:
-                output_format = output_path.suffix[1:] if output_path.suffix else "vasp"
+                if output_path.suffix:
+                    output_format = output_path.suffix[1:]
+                else:
+                    raise ValueError("Output file format not specified and cannot be auto-detected. Please provide output_format.")
+                
             
-            # Map file formats
+            # Map file formats if input_format in self.format_mapping:
             input_format = self.format_mapping.get(input_format, input_format)
             output_format = self.format_mapping.get(output_format, output_format)
             
@@ -218,11 +226,32 @@ class StructureConverter:
                                     frame_output = output_path / f"frame_{i+1}.vasp"
                                 self._write_vasp(structure, frame_output, self._constraints)
                                 pbar.update(1)
+
+            if output_format == "lammps-data":
+                # For LAMMPS dump format, use ASE's read_lammps_dump function
+                if mode == "single" and len(structures) == 1:
+                    # Single frame, single output
+                    write_lammps_data(output_path, masses=True, specorder=list(structures[0].symbols.indices().keys()), atoms=structures[0])
+                else:
+                    # Multiple frames or multi-frame mode
+                    if output_format in self.single_frame_only_formats or mode == "multi":
+                        # Create output directory
+                        output_path.mkdir(parents=True, exist_ok=True)
+                        for i, structure in enumerate(structures):
+                            if separate_dirs:
+                                # Use original frame index for directory name
+                                frame_idx = frame_indices[i] if frame_indices else i
+                                frame_dir = output_path / f"frame_{frame_idx+1}"
+                                frame_dir.mkdir(exist_ok=True)
+                                frame_output = frame_dir / "lmp.data"
+                            else:
+                                frame_output = output_path / f"frame_{i+1}.data"
+                            write_lammps_data(frame_output, masses=True, specorder=list(structure.symbols.indices.keys()), atoms=structure)
             else:
                 # For other formats, use ASE's write function
                 if mode == "single" and len(structures) == 1:
                     # Single frame, single output
-                    ase.io.write(output_path, structures[0], format=output_format)
+                    write(output_path, structures[0], format=output_format)
                 else:
                     # Multiple frames or multi-frame mode
                     if output_format in self.single_frame_only_formats or mode == "multi":
@@ -237,29 +266,20 @@ class StructureConverter:
                                 frame_output = frame_dir / f"structure.{output_format}"
                             else:
                                 frame_output = output_path / f"frame_{i+1}.{output_format}"
-                            ase.io.write(frame_output, structure, format=output_format)
+                            write(frame_output, structure, format=output_format)
                     else:
                         # Write all frames to a single file
-                        ase.io.write(output_path, structures, format=output_format)
-            
-            print(f"Conversion completed! Output file: {output_path}")
+                        write(output_path, structures, format=output_format)
             
         except Exception as e:
             raise ValueError(f"Conversion failed: {str(e)}")
     
-    def _detect_mode(self, input_path: Path, input_format: str) -> str:
-        """Detect conversion mode"""
-        try:
-            structures = ase.io.read(input_path, format=input_format, index=":")
-            return "multi" if len(structures) > 1 else "single"
-        except Exception:
-            return "single"
-    
     def _validate_mode(self, mode: str, output_format: str) -> None:
         """Validate conversion mode"""
-        if mode == "multi" and output_format in self.single_frame_only_formats:
+        if mode == "multi" and output_format not in self.single_frame_only_formats:
             if isinstance(output_format, str) and Path(output_format).suffix:
-                raise ValueError(f"Output format {output_format} does not support multi-frame structures. Please choose another output format or use single-frame mode.")
+                raise ValueError(f"""Output format {output_format} does not support multi-frame structures. 
+                                 Please choose another output format or use single-frame mode.""")
 
     def _parse_frame_selection(self, frame_str: str) -> List[int]:
         """
@@ -298,7 +318,7 @@ class StructureConverter:
         """Read structures"""
         try:
             # Read all frames first
-            all_structures = ase.io.read(input_path, format=input_format, index=":")
+            all_structures = read(input_path, format=input_format, index=":")
             if not isinstance(all_structures, list):
                 all_structures = [all_structures]
             
@@ -338,75 +358,38 @@ class StructureConverter:
         """Sort atoms by element type"""
         for structure in structures:
             # Get current element order and positions
-            elements = structure.get_chemical_symbols()
-            positions = structure.positions.copy()
-            numbers = structure.numbers.copy()
-            
-            # Create list of (element, index) tuples for sorting
-            element_indices = list(enumerate(elements))
-            
+            elements_set = set(structure.symbols)
+            elements_dict = structure.symbols.indices()
             # Sort based on element order
             if sort_type == "ascending":
                 # Sort by alphabetical order
-                element_indices.sort(key=lambda x: x[1])
+                elements = sorted(elements)
             else:  # descending
                 # Sort by alphabetical order
-                element_indices.sort(key=lambda x: x[1], reverse=True)
+                elements = sorted(elements, reverse=True)
             
             # Get sorted indices
-            indices = [i for i, _ in element_indices]
+            indices = np.concatenate([elements_dict[element] for element in elements])
             
             # Update structure
-            structure.positions = positions[indices]
-            structure.numbers = numbers[indices]
-            structure.set_chemical_symbols([elements[i] for i in indices])
+            structure = structure[indices]
             
-            # Update additional properties if they exist
-            if structure.has('initial_magmoms'):
-                magmoms = structure.get_initial_magmoms()
-                structure.set_initial_magmoms(magmoms[indices])
-            if structure.has('initial_charges'):
-                charges = structure.get_initial_charges()
-                structure.set_initial_charges(charges[indices])
-            
-            # Update atomic type order
-            unique_elements = list(dict.fromkeys(structure.get_chemical_symbols()))
-            structure.new_element_order = unique_elements
+            structure.new_element_order = elements
         
         return structures
     
     def _apply_element_order(self, structures: List[Atoms]) -> List[Atoms]:
         """Apply custom element order"""
         for structure in structures:
-            # Get current element order and positions
-            elements = structure.get_chemical_symbols()
-            positions = structure.positions.copy()
-            numbers = structure.numbers.copy()
             
-            # Create mapping from element to desired position
-            element_positions = {elem: i for i, elem in enumerate(self._element_order)}
-            
-            # Create list of (element, index) tuples for sorting
-            element_indices = list(enumerate(elements))
-            
-            # Sort based on custom element order
-            element_indices.sort(key=lambda x: element_positions.get(x[1], len(self._element_order)))
+            elements_set = set(structure.symbols)
+            elements_dict = structure.symbols.indices()
             
             # Get sorted indices
-            indices = [i for i, _ in element_indices]
+            indices = np.concatenate([elements_dict[e] for e in self._element_order if e in elements_set])
             
             # Update structure
-            structure.positions = positions[indices]
-            structure.numbers = numbers[indices]
-            structure.set_chemical_symbols([elements[i] for i in indices])
-            
-            # Update additional properties if they exist
-            if structure.has('initial_magmoms'):
-                magmoms = structure.get_initial_magmoms()
-                structure.set_initial_magmoms(magmoms[indices])
-            if structure.has('initial_charges'):
-                charges = structure.get_initial_charges()
-                structure.set_initial_charges(charges[indices])
+            structure = structure[indices]
             
             # Update atomic type order
             structure.new_element_order = self._element_order
