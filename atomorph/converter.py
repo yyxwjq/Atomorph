@@ -736,7 +736,7 @@ class StructureConverter:
                 output_merged_file.parent.mkdir(parents=True, exist_ok=True)
                 
                 # Write using ASE
-                ase.io.write(str(output_merged_file), all_structures, format=output_format)
+                write(str(output_merged_file), all_structures, format=output_format)
                 
                 stats["merged_file"] = str(output_merged_file)
                 stats["merged_count"] = len(all_structures)
