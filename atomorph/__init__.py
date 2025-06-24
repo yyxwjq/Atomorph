@@ -9,7 +9,7 @@ different formats, with support for constraints, sorting, and multi-frame proces
 It also supports batch conversion of multiple files in a directory structure.
 """
 
-__version__ = "1.0.3"
+__version__ = "1.0.5"
 
 from .converter import StructureConverter
 from .utils import setup_logging, get_version, list_available_formats

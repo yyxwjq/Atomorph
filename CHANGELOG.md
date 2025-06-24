@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 此文件记录项目的所有重要更改。
 
+## [1.0.5] - 2024-06-XX
+
+### Fixed / 修复
+- Fixed documentation content, including README.md / 修正文档内容，包括README.md
+
+## [1.0.4] - 2024-06-XX
+
+### Improved / 改进
+- Optimized several functions related to atom sorting / 优化了原子排序相关的几个函数
+
 ## [1.0.3] - 2024-04-06
 
 ### Added / 新增

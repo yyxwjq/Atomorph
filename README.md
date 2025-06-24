@@ -7,7 +7,7 @@
 
 Atomorph is a tool for converting and manipulating atomic structure files. It supports conversions between various file formats, as well as handling atomic constraints.
 
-**Current Version: 1.0.3**
+**Current Version: 1.0.4**
 
 ### Features
 
