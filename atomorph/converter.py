@@ -17,6 +17,7 @@ from tqdm import tqdm
 from ase import Atoms
 import numpy as np
 import warnings
+import ase
 import sys
 import os
 

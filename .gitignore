@@ -116,3 +116,5 @@ dmypy.json
 # Project specific
 examples/**/output*/
 examples/**/*.vasp/ 
+# vscode
+.vscode
